@@ -12,3 +12,4 @@ name = "finneo_crypto"
 [dependencies]
 ring = "0.17"
 argon2 = "0.5"
+thiserror = "2.0"
