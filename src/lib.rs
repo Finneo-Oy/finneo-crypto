@@ -3,10 +3,12 @@ use ring::rand::{SecureRandom, SystemRandom};
 use argon2::Argon2;
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+uniffi::setup_scaffolding!();
+
+#[derive(Debug, Error, uniffi::Error)]
 pub enum CryptoError {
     #[error("Invalid key length: expected 32 bytes, got {0}")]
-    InvalidKeyLength(usize),
+    InvalidKeyLength(u64),
     #[error("Invalid ciphertext: too short to contain nonce")]
     InvalidCiphertext,
     #[error("Encryption failed")]
@@ -19,13 +21,14 @@ pub enum CryptoError {
     RandomGenerationFailed,
 }
 
-pub fn encrypt(plaintext: &[u8], key: &[u8]) -> Result<Vec<u8>, CryptoError> {
+#[uniffi::export]
+pub fn encrypt(plaintext: Vec<u8>, key: Vec<u8>) -> Result<Vec<u8>, CryptoError> {
     if key.len() != 32 {
-        return Err(CryptoError::InvalidKeyLength(key.len()));
+        return Err(CryptoError::InvalidKeyLength(key.len() as u64));
     }
 
-    let unbound_key = UnboundKey::new(&AES_256_GCM, key)
-        .map_err(|_| CryptoError::InvalidKeyLength(key.len()))?;
+    let unbound_key = UnboundKey::new(&AES_256_GCM, &key)
+        .map_err(|_| CryptoError::InvalidKeyLength(key.len() as u64))?;
     let less_safe_key = LessSafeKey::new(unbound_key);
 
     let rng = SystemRandom::new();
@@ -34,7 +37,7 @@ pub fn encrypt(plaintext: &[u8], key: &[u8]) -> Result<Vec<u8>, CryptoError> {
         .map_err(|_| CryptoError::RandomGenerationFailed)?;
     let nonce = Nonce::assume_unique_for_key(nonce_bytes);
 
-    let mut in_out = plaintext.to_vec();
+    let mut in_out = plaintext;
     less_safe_key
         .seal_in_place_append_tag(nonce, Aad::empty(), &mut in_out)
         .map_err(|_| CryptoError::EncryptionFailed)?;
@@ -44,16 +47,17 @@ pub fn encrypt(plaintext: &[u8], key: &[u8]) -> Result<Vec<u8>, CryptoError> {
     Ok(result)
 }
 
-pub fn decrypt(ciphertext: &[u8], key: &[u8]) -> Result<Vec<u8>, CryptoError> {
+#[uniffi::export]
+pub fn decrypt(ciphertext: Vec<u8>, key: Vec<u8>) -> Result<Vec<u8>, CryptoError> {
     if key.len() != 32 {
-        return Err(CryptoError::InvalidKeyLength(key.len()));
+        return Err(CryptoError::InvalidKeyLength(key.len() as u64));
     }
     if ciphertext.len() < 12 {
         return Err(CryptoError::InvalidCiphertext);
     }
 
-    let unbound_key = UnboundKey::new(&AES_256_GCM, key)
-        .map_err(|_| CryptoError::InvalidKeyLength(key.len()))?;
+    let unbound_key = UnboundKey::new(&AES_256_GCM, &key)
+        .map_err(|_| CryptoError::InvalidKeyLength(key.len() as u64))?;
     let less_safe_key = LessSafeKey::new(unbound_key);
 
     let nonce_bytes: [u8; 12] = ciphertext[..12]
@@ -69,14 +73,16 @@ pub fn decrypt(ciphertext: &[u8], key: &[u8]) -> Result<Vec<u8>, CryptoError> {
     Ok(in_out)
 }
 
-pub fn derive_key(password: &str, salt: &[u8]) -> Result<Vec<u8>, CryptoError> {
+#[uniffi::export]
+pub fn derive_key(password: String, salt: Vec<u8>) -> Result<Vec<u8>, CryptoError> {
     let mut output_key = [0u8; 32];
     Argon2::default()
-        .hash_password_into(password.as_bytes(), salt, &mut output_key)
+        .hash_password_into(password.as_bytes(), &salt, &mut output_key)
         .map_err(|_| CryptoError::KeyDerivationFailed)?;
     Ok(output_key.to_vec())
 }
 
+#[uniffi::export]
 pub fn generate_salt() -> Result<Vec<u8>, CryptoError> {
     let rng = SystemRandom::new();
     let mut salt = [0u8; 16];

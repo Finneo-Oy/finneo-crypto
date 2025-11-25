@@ -9,7 +9,12 @@ license = "MIT"
 crate-type = ["cdylib", "staticlib"]
 name = "finneo_crypto"
 
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+
 [dependencies]
 ring = "0.17"
 argon2 = "0.5"
 thiserror = "2.0"
+uniffi = { version = "0.30", features = ["cli"] }
