@@ -19,6 +19,8 @@ pub enum CryptoError {
     KeyDerivationFailed,
     #[error("Random generation failed")]
     RandomGenerationFailed,
+    #[error("Invalid salt length: expected at least 8 bytes, got {0}")]
+    InvalidSaltLength(u64),
 }
 
 #[uniffi::export]
@@ -66,15 +68,19 @@ pub fn decrypt(ciphertext: Vec<u8>, key: Vec<u8>) -> Result<Vec<u8>, CryptoError
     let nonce = Nonce::assume_unique_for_key(nonce_bytes);
 
     let mut in_out = ciphertext[12..].to_vec();
-    less_safe_key
+    let decrypted = less_safe_key
         .open_in_place(nonce, Aad::empty(), &mut in_out)
         .map_err(|_| CryptoError::DecryptionFailed)?;
 
-    Ok(in_out)
+    Ok(decrypted.to_vec())
 }
 
 #[uniffi::export]
 pub fn derive_key(password: String, salt: Vec<u8>) -> Result<Vec<u8>, CryptoError> {
+    if salt.len() < 8 {
+        return Err(CryptoError::InvalidSaltLength(salt.len() as u64));
+    }
+
     let mut output_key = [0u8; 32];
     Argon2::default()
         .hash_password_into(password.as_bytes(), &salt, &mut output_key)
@@ -89,4 +95,102 @@ pub fn generate_salt() -> Result<Vec<u8>, CryptoError> {
     rng.fill(&mut salt)
         .map_err(|_| CryptoError::RandomGenerationFailed)?;
     Ok(salt.to_vec())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encrypt_decrypt_roundtrip() {
+        let key = vec![0u8; 32];
+        let plaintext = b"Hello, Finneo!".to_vec();
+
+        let ciphertext = encrypt(plaintext.clone(), key.clone()).unwrap();
+        let decrypted = decrypt(ciphertext, key).unwrap();
+
+        assert_eq!(plaintext, decrypted);
+    }
+
+    #[test]
+    fn encrypt_produces_different_ciphertext() {
+        let key = vec![0u8; 32];
+        let plaintext = b"Same message".to_vec();
+
+        let ct1 = encrypt(plaintext.clone(), key.clone()).unwrap();
+        let ct2 = encrypt(plaintext, key).unwrap();
+
+        assert_ne!(ct1, ct2);
+    }
+
+    #[test]
+    fn decrypt_with_wrong_key_fails() {
+        let key1 = vec![0u8; 32];
+        let key2 = vec![1u8; 32];
+        let plaintext = b"Secret".to_vec();
+
+        let ciphertext = encrypt(plaintext, key1).unwrap();
+        let result = decrypt(ciphertext, key2);
+
+        assert!(matches!(result, Err(CryptoError::DecryptionFailed)));
+    }
+
+    #[test]
+    fn invalid_key_length_rejected() {
+        let short_key = vec![0u8; 16];
+        let plaintext = b"Test".to_vec();
+
+        let result = encrypt(plaintext, short_key);
+
+        assert!(matches!(result, Err(CryptoError::InvalidKeyLength(16))));
+    }
+
+    #[test]
+    fn derive_key_produces_32_bytes() {
+        let salt = generate_salt().unwrap();
+        let key = derive_key("password".to_string(), salt).unwrap();
+
+        assert_eq!(key.len(), 32);
+    }
+
+    #[test]
+    fn derive_key_deterministic() {
+        let salt = vec![0u8; 16];
+        let key1 = derive_key("password".to_string(), salt.clone()).unwrap();
+        let key2 = derive_key("password".to_string(), salt).unwrap();
+
+        assert_eq!(key1, key2);
+    }
+
+    #[test]
+    fn derive_key_different_passwords() {
+        let salt = vec![0u8; 16];
+        let key1 = derive_key("password1".to_string(), salt.clone()).unwrap();
+        let key2 = derive_key("password2".to_string(), salt).unwrap();
+
+        assert_ne!(key1, key2);
+    }
+
+    #[test]
+    fn short_salt_rejected() {
+        let short_salt = vec![0u8; 4];
+        let result = derive_key("password".to_string(), short_salt);
+
+        assert!(matches!(result, Err(CryptoError::InvalidSaltLength(4))));
+    }
+
+    #[test]
+    fn generate_salt_produces_16_bytes() {
+        let salt = generate_salt().unwrap();
+
+        assert_eq!(salt.len(), 16);
+    }
+
+    #[test]
+    fn generate_salt_is_random() {
+        let salt1 = generate_salt().unwrap();
+        let salt2 = generate_salt().unwrap();
+
+        assert_ne!(salt1, salt2);
+    }
 }
