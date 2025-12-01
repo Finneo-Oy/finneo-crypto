@@ -2,8 +2,12 @@
 name = "finneo_crypto"
 version = "0.1.0"
 edition = "2024"
-description = "Cross-platform encryption library for Finneo"
+description = "Cross-platform AES-256-GCM encryption with Argon2id key derivation used in Finneo"
 license = "MIT"
+repository = "https://github.com/Finneo-Oy/finneo-crypto"
+keywords = ["crypto", "encryption", "aes", "argon2", "ffi"]
+categories = ["cryptography", "api-bindings"]
+readme = "README.md"
 
 [lib]
 crate-type = ["cdylib", "staticlib"]

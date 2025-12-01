@@ -23,6 +23,8 @@ pub enum CryptoError {
     InvalidSaltLength(u64),
 }
 
+/// Encrypt plaintext using AES-256-GCM
+/// Returns nonce (12 bytes) prepended to ciphertext
 #[uniffi::export]
 pub fn encrypt(plaintext: Vec<u8>, key: Vec<u8>) -> Result<Vec<u8>, CryptoError> {
     if key.len() != 32 {
@@ -49,6 +51,8 @@ pub fn encrypt(plaintext: Vec<u8>, key: Vec<u8>) -> Result<Vec<u8>, CryptoError>
     Ok(result)
 }
 
+/// Decrypt ciphertext using AES-256-GCM
+/// Expects nonce (12 bytes) prepended to ciphertext
 #[uniffi::export]
 pub fn decrypt(ciphertext: Vec<u8>, key: Vec<u8>) -> Result<Vec<u8>, CryptoError> {
     if key.len() != 32 {
@@ -75,6 +79,7 @@ pub fn decrypt(ciphertext: Vec<u8>, key: Vec<u8>) -> Result<Vec<u8>, CryptoError
     Ok(decrypted.to_vec())
 }
 
+/// Derive a 32-byte key from password using Argon2id
 #[uniffi::export]
 pub fn derive_key(password: String, salt: Vec<u8>) -> Result<Vec<u8>, CryptoError> {
     if salt.len() < 8 {
@@ -88,6 +93,7 @@ pub fn derive_key(password: String, salt: Vec<u8>) -> Result<Vec<u8>, CryptoErro
     Ok(output_key.to_vec())
 }
 
+/// Generate a random 16-byte salt for key derivation
 #[uniffi::export]
 pub fn generate_salt() -> Result<Vec<u8>, CryptoError> {
     let rng = SystemRandom::new();
